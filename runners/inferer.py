@@ -207,6 +207,7 @@ def run_infering(
 
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
+import cv2
 
 def run_infering_with_gradcam(
         model,
