@@ -203,3 +203,41 @@ def run_infering(
         )
         
     return ret_dict
+
+
+from pytorch_grad_cam import GradCAM
+from pytorch_grad_cam.utils.image import show_cam_on_image
+
+def run_infering_with_gradcam(
+        model,
+        data,
+        model_inferer,
+        post_transform,
+        args,
+        target_layers
+    ):
+    # 設定 Grad-CAM
+    cam = GradCAM(model=model, target_layers=target_layers, use_cuda=torch.cuda.is_available())
+
+    # 推論並產生 Grad-CAM
+    with torch.no_grad():
+        model.eval()
+        input_tensor = data['image'].to(args.device)
+        
+        # 使用 Grad-CAM 計算熱力圖
+        grayscale_cam = cam(input_tensor=input_tensor, targets=None)  # 可以自定義 targets
+        grayscale_cam = grayscale_cam[0]  # 取出第一個 batch 的結果
+        
+        # 將熱力圖疊加到原始影像
+        image = input_tensor[0, 0].cpu().numpy()  # 假設 3D 輸入形狀為 (1, C, D, H, W)
+        cam_image = show_cam_on_image(image, grayscale_cam, use_rgb=True)
+
+        # 儲存熱力圖
+        save_path = os.path.join(args.infer_dir, "grad_cam_visualization.png")
+        cv2.imwrite(save_path, cam_image)
+
+        print(f"Grad-CAM 熱力圖已儲存至 {save_path}")
+
+    # 執行正常推論
+    ret_dict = run_infering(model, data, model_inferer, post_transform, args)
+    return ret_dict

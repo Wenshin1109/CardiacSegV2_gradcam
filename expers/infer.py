@@ -19,6 +19,7 @@ from data_utils.data_loader_utils import load_data_dict_json
 from data_utils.dataset import get_infer_data
 from data_utils.io import load_json
 from runners.inferer import run_infering
+from runners.inferer import run_infering_with_gradcam
 from networks.network import network
 
 from expers.args import get_parser
@@ -49,6 +50,8 @@ def main_worker(args):
 
     # model
     model = network(args.model_name, args)
+
+
 
     # check point
     if args.checkpoint is not None:
@@ -107,7 +110,24 @@ def main_worker(args):
                 'image': args.img_pth,
             }]
 
-    # run infer
+    # # run infer
+    # for data_dict in data_dicts:
+    #     print('infer data:', data_dict)
+      
+    #     # load infer data
+    #     data = get_infer_data(data_dict, args)
+
+    #     # infer
+    #     run_infering(
+    #         model,
+    #         data,
+    #         model_inferer,
+    #         post_transform,
+    #         args
+    #     )
+
+    # run infer with gradcam
+    target_layers = [model.out_block.conv.conv]
     for data_dict in data_dicts:
         print('infer data:', data_dict)
       
@@ -115,13 +135,15 @@ def main_worker(args):
         data = get_infer_data(data_dict, args)
 
         # infer
-        run_infering(
+        run_infering_with_gradcam(
             model,
             data,
             model_inferer,
             post_transform,
-            args
+            args,
+            target_layers
         )
+    
 
 
 if __name__ == "__main__":
