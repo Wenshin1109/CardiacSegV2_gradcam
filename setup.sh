@@ -15,4 +15,6 @@ pip install toml==0.10.2 && \
 pip install gdown==4.7.1 && \
 pip install tabulate==0.9.0 && \
 pip install --user ipykernel && \
+pip install grad-cam==1.5.4 && \
+pip install opencv-python==4.10.0.84 && \
 python -m ipykernel install --user --name base
