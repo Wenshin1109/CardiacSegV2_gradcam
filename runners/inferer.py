@@ -218,7 +218,8 @@ def run_infering_with_gradcam(
         target_layers
     ):
     # 設定 Grad-CAM
-    cam = GradCAM(model=model, target_layers=target_layers, use_cuda=torch.cuda.is_available())
+    # cam = GradCAM(model=model, target_layers=target_layers, use_cuda=torch.cuda.is_available())
+    cam = GradCAM(model=model, target_layers=target_layers)
 
     # 推論並產生 Grad-CAM
     with torch.no_grad():
