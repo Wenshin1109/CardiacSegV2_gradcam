@@ -3,6 +3,10 @@ import numpy as np
 from monai.transforms import Resize
 
 def resample_image(img, target_size=(128, 128, 128)):
+    if len(img.shape) == 4:  # remove the batch dimension
+        img = img[0]
+    elif len(img.shape) != 3:
+        raise ValueError(f"Invalid image shape: {img.shape}, expected 3D or 4D.")
     resample_transform = Resize(spatial_size=target_size, mode="trilinear")
     return resample_transform(img[np.newaxis, np.newaxis, ...])[0, 0]
 
