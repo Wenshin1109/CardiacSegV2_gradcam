@@ -24,6 +24,9 @@ from networks.network import network
 
 from expers.args import get_parser
 
+from process_img import process_and_save
+
+
 
 def main():
     args = get_parser(sys.argv[1:])
@@ -71,6 +74,11 @@ def main_worker(args):
           "=> loaded checkpoint '{}')"\
           .format(args.checkpoint)
         )
+
+    # process image
+    processed_img_pth = os.path.join(args.infer_dir, "processed_image.nii.gz")
+    process_and_save(args.img_pth, processed_img_pth)
+    args.img_pth = processed_img_pth
 
     # inferer
     keys = ['pred']
