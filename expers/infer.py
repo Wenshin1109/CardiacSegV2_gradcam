@@ -127,7 +127,7 @@ def main_worker(args):
     #     )
 
     # run infer with gradcam
-    target_layers = [model.out_block.conv.conv]
+    target_layers = [model.decoder1.conv_block.cbam]
     for data_dict in data_dicts:
         print('infer data:', data_dict)
       

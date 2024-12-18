@@ -210,36 +210,102 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 import cv2
 
 def run_infering_with_gradcam(
-        model,
-        data,
-        model_inferer,
-        post_transform,
-        args,
-        target_layers
+        model, data, model_inferer, post_transform, args, target_layers
     ):
-    # 設定 Grad-CAM
-    # cam = GradCAM(model=model, target_layers=target_layers, use_cuda=torch.cuda.is_available())
+    ret_dict = {}
+
+    # test 推論過程（推論時間計算）
+    start_time = time.time()
+    data['pred'] = infer(model, data, model_inferer, args.device)
+    end_time = time.time()
+    ret_dict['inf_time'] = end_time - start_time
+    print(f'infer time: {ret_dict["inf_time"]} sec')
+
+    # Grad-CAM visualization
     cam = GradCAM(model=model, target_layers=target_layers)
-
-    # 推論並產生 Grad-CAM
     with torch.no_grad():
-        model.eval()
         input_tensor = data['image'].to(args.device)
+        grayscale_cam = cam(input_tensor=input_tensor, targets=None)
+
+        # 處理批次資料
+        for idx in range(len(grayscale_cam)):
+            original_image = input_tensor[idx, 0].cpu().numpy()  # 假設輸入形狀 (B, C, D, H, W)
+            min_val, max_val = original_image.min(), original_image.max()
+            normalized_image = (original_image - min_val) / (max_val - min_val)
+
+            # 產生並儲存熱力圖
+            cam_image = show_cam_on_image(normalized_image, grayscale_cam[idx], use_rgb=True)
+            save_path = os.path.join(args.infer_dir, f"grad_cam_visualization_{idx}.png")
+            cv2.imwrite(save_path, cam_image)
+            print(f"Grad-CAM visualization results have been saved in {save_path}")
+
+    # post process transform 後處理
+    if args.infer_post_process:
+        print('use post process infer')
+        applied_labels = np.unique(data['pred'].flatten())[1:]
+        data['pred'] = KeepLargestConnectedComponent(applied_labels=applied_labels)(data['pred'])
+    
+    # eval infer tta 模型評估（TTA與原標籤）
+    if 'label' in data.keys():
+        tta_dc_vals, tta_hd95_vals, _ , _ = eval_label_pred(data, args.out_channels, args.device)
+        print('infer test time aug:')
+        print('dice:', tta_dc_vals)
+        print('hd95:', tta_hd95_vals)
+        ret_dict['tta_dc'] = tta_dc_vals
+        ret_dict['tta_hd'] = tta_hd95_vals
         
-        # 使用 Grad-CAM 計算熱力圖
-        grayscale_cam = cam(input_tensor=input_tensor, targets=None)  # 可以自定義 targets
-        grayscale_cam = grayscale_cam[0]  # 取出第一個 batch 的結果
+        # post label transform 
+        sqz_transform = SqueezeDimd(keys=['label'])
+        data = sqz_transform(data)
+    
+    # post transform 資料轉換與評估（原始標籤）
+    data = post_transform(data)
+    # eval infer origin
+    if 'label' in data.keys():
+        # get orginal label
+        lbl_dict = {'label': data['label_meta_dict']['filename_or_obj']}
+        label_loader = get_label_transform(args.data_name, keys=['label'])
+        lbl_data = label_loader(lbl_dict)
         
-        # 將熱力圖疊加到原始影像
-        image = input_tensor[0, 0].cpu().numpy()  # 假設 3D 輸入形狀為 (1, C, D, H, W)
-        cam_image = show_cam_on_image(image, grayscale_cam, use_rgb=True)
+        data['label'] = lbl_data['label']
+        data['label_meta_dict'] = lbl_data['label']
+        
+        ori_dc_vals, ori_hd95_vals, ori_sensitivity_vals, ori_specificity_vals = eval_label_pred(data, args.out_channels, args.device)
+        print('infer test original:')
+        print('dice:', ori_dc_vals)
+        print('hd95:', ori_hd95_vals)
+        print('sensitivity:', ori_sensitivity_vals)
+        print('specificity:', ori_specificity_vals)
+        ret_dict['ori_dc'] = ori_dc_vals
+        ret_dict['ori_hd'] = ori_hd95_vals
+        ret_dict['ori_sensitivity'] = ori_sensitivity_vals
+        ret_dict['ori_specificity'] = ori_specificity_vals
+    
+    # 特定資料集處裡（MM-WHS）
+    if args.data_name == 'mmwhs':
+        mmwhs_transform = Compose([
+            LabelFilter(applied_labels=[1, 2, 3, 4, 5, 6, 7]),
+            MapLabelValue(orig_labels=[0, 1, 2, 3, 4, 5, 6, 7],
+                            target_labels=[0, 500, 600, 420, 550, 205, 820, 850]),
+            # AddChannel(),
+            # Spacing(
+            #     pixdim=(args.space_x, args.space_y, args.space_z),
+            #     mode=("nearest"),
+            # ),
+            # SqueezeDim()
+        ])
+        data['pred'] = mmwhs_transform(data['pred'])
+        
+    # 儲存推論結果
+    if not args.test_mode:
+        # save pred result
+        filename = get_filename(data)
+        infer_img_pth = os.path.join(args.infer_dir, filename)
 
-        # 儲存熱力圖
-        save_path = os.path.join(args.infer_dir, "grad_cam_visualization.png")
-        cv2.imwrite(save_path, cam_image)
+        save_img(
+          data['pred'], 
+          data['pred_meta_dict'], 
+          infer_img_pth
+        )
 
-        print(f"Grad-CAM 熱力圖已儲存至 {save_path}")
-
-    # 執行正常推論
-    ret_dict = run_infering(model, data, model_inferer, post_transform, args)
     return ret_dict
