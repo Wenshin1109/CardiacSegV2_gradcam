@@ -3,12 +3,19 @@ import numpy as np
 from monai.transforms import Resize
 
 def resample_image(img, target_size=(128, 128, 128)):
-    if len(img.shape) == 4:  # remove the batch dimension
-        img = img[0]
-    elif len(img.shape) != 3:
-        raise ValueError(f"Invalid image shape: {img.shape}, expected 3D or 4D.")
+    # check image shape
+    if len(img.shape) != 3:
+        raise ValueError(f"Invalid image shape: {img.shape}, expected 3D.")
+    
+    # expand dimensions to (1, 1, D, H, W)
+    img_4d = img[np.newaxis, np.newaxis, ...]  # (1, 1, D, H, W)
+
+    # run resampling
     resample_transform = Resize(spatial_size=target_size, mode="trilinear")
-    return resample_transform(img[np.newaxis, np.newaxis, ...])[0, 0]
+    resampled_img = resample_transform(img_4d)
+
+    # remove the expanded dimensions
+    return resampled_img[0, 0]
 
 def normalize_intensity(img, a_min=-42, a_max=423):
     img = np.clip(img, a_min, a_max)
