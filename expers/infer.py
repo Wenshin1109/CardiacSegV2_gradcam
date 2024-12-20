@@ -1,6 +1,6 @@
 import sys
 # set package path
-sys.path.append("/nfs/Workspace/CardiacSegV2")
+sys.path.append("/content/CardiacSegV2_gradcam")
 
 import os
 from functools import partial
@@ -75,6 +75,7 @@ def main_worker(args):
           .format(args.checkpoint)
         )
 
+
     # process image
     processed_img_pth = os.path.join(args.infer_dir, "processed_image.nii.gz")
     process_and_save(args.img_pth, processed_img_pth)
@@ -141,6 +142,7 @@ def main_worker(args):
       
         # load infer data
         data = get_infer_data(data_dict, args)
+        print(f"[INFO] Loaded image shape: {data['image'].shape}")
 
         # infer
         run_infering_with_gradcam(

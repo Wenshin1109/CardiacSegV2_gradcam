@@ -208,6 +208,25 @@ def run_infering(
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 import cv2
+import torch.nn.functional as F
+
+def align_tensor(tensor, target_shape):
+    """
+    調整張量的空間大小以匹配目標形狀。
+    """
+    print(f"Aligning tensor from {tensor.shape} to {target_shape}...")
+
+    # 計算需要補零的大小
+    padding = [
+        0, max(target_shape[4] - tensor.shape[4], 0),  # W
+        0, max(target_shape[3] - tensor.shape[3], 0),  # H
+        0, max(target_shape[2] - tensor.shape[2], 0),  # D
+    ]
+    aligned_tensor = F.pad(tensor, padding)
+    print(f"Aligned tensor shape: {aligned_tensor.shape}")
+
+    return aligned_tensor
+
 
 def run_infering_with_gradcam(
         model, data, model_inferer, post_transform, args, target_layers
@@ -225,6 +244,15 @@ def run_infering_with_gradcam(
     cam = GradCAM(model=model, target_layers=target_layers)
     with torch.no_grad():
         input_tensor = data['image'].to(args.device)
+        # 檢查影像形狀與設備
+        print(f"Input tensor shape: {input_tensor.shape}, Device: {input_tensor.device}")
+
+        # 確保影像形狀匹配
+        target_shape = (input_tensor.shape[0], input_tensor.shape[1], 128, 128, 128)
+        if input_tensor.shape != target_shape:
+            print(f"Mismatch detected: {input_tensor.shape} vs {target_shape}")
+            input_tensor = align_tensor(input_tensor, target_shape)
+
         grayscale_cam = cam(input_tensor=input_tensor, targets=None)
 
         # 處理批次資料

@@ -1,30 +1,43 @@
 import nibabel as nib
-import numpy as np
 from monai.transforms import Resize
+import numpy as np
+import torch
 
 def resample_image(img, target_size=(128, 128, 128)):
     """
-    Resample a 3D image to a fixed target size using MONAI Resize.
-    Ensure the input image is 3D, expand to 4D before processing,
+    Resample a 3D image using MONAI Resize.
+    Ensure input image is 3D, expand to 4D for processing,
     and remove extra dimensions afterward.
     """
+    print(f"Image shape before processing: {img.shape}")
+
     # check image shape
-    if len(img.shape) == 4:
-        print(f"Warning: Unexpected 4D image shape detected {img.shape}. Removing batch dimension.")
-        img = img[0]  # 移remove batch dimension
-    
-    if len(img.shape) != 3:
-        raise ValueError(f"Invalid image shape: {img.shape}, expected 3D.")
+    if len(img.shape) == 3:
+        print("Expanding image to 4D...")
+        img_4d = img[np.newaxis, ...]  # (B, D, H, W)
+    else:
+        raise ValueError(f"Invalid input image shape: {img.shape}. Expected 3D.")
 
-    # expand to 4D
-    img_4d = img[np.newaxis, np.newaxis, ...]
+    print(f"Image shape after expansion: {img_4d.shape}")
 
-    # run resampling
-    resample_transform = Resize(spatial_size=target_size, mode="trilinear")
+    # determine target spatial size
+    spatial_size = target_size
+    print(f"Using target spatial size: {spatial_size}")
+
+    # resample image
+    resample_transform = Resize(spatial_size=spatial_size, mode="trilinear")
     resampled_img = resample_transform(img_4d)
+    resampled_img = np.asarray(resampled_img[0], dtype=np.float32)
 
-    # remove extra dimensions
-    return resampled_img[0, 0]
+
+    print(f"Resampled image shape: {resampled_img.shape}")
+
+    
+    return resampled_img
+
+
+
+
 
 
 def normalize_intensity(img, a_min=-42, a_max=423):
@@ -38,7 +51,8 @@ def normalize_intensity(img, a_min=-42, a_max=423):
 
 def process_and_save(input_path, output_path):
     """
-    Load an image, perform normalization and resampling, and save it.
+    Load, normalize, resample, and save the image.
+    Automatically adjust target size if needed.
     """
     try:
         print(f"Loading image: {input_path}")
@@ -59,5 +73,7 @@ def process_and_save(input_path, output_path):
 
     except FileNotFoundError:
         print(f"Error: Input file not found: {input_path}")
+    except ValueError as e:
+        print(f"Image shape validation failed: {e}")
     except Exception as e:
-        print(f"Error during processing: {e}")
+        print(f"Unexpected error during processing: {e}")
