@@ -243,6 +243,9 @@ def run_infering_with_gradcam(
     # Grad-CAM visualization
     cam = GradCAM(model=model, target_layers=target_layers)
     with torch.no_grad():
+        # 檢查影像形狀與資料型別
+        print(f"[INFO] Image shape: {data['image'].shape}, dtype: {data['image'].dtype}")
+
         input_tensor = data['image'].to(args.device)
         # 檢查影像形狀與設備
         print(f"Input tensor shape: {input_tensor.shape}, Device: {input_tensor.device}")

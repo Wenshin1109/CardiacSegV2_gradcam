@@ -76,10 +76,30 @@ def main_worker(args):
         )
 
 
-    # process image
-    processed_img_pth = os.path.join(args.infer_dir, "processed_image.nii.gz")
-    process_and_save(args.img_pth, processed_img_pth)
-    args.img_pth = processed_img_pth
+    pred_img = []
+    # 遍歷所有原始影像，進行處理並更新清單
+    for root, dirs, files in os.walk("/content/drive/MyDrive/myo_pred/mwhs/image", topdown=False):
+        for name in files:
+            original_path = os.path.join(root, name)
+            print(f"[INFO] Found image: {original_path}")
+
+            # 設置處理後影像的輸出路徑
+            processed_img_pth = f"/content/drive/MyDrive/myo_pred/mwhs/infer/processed_{name}"
+
+            # 處理影像
+            process_and_save(original_path, processed_img_pth)
+
+            # 更新處理後的影像到清單中
+            pred_img.append(processed_img_pth)
+            print(f"[INFO] Processed image added to list: {processed_img_pth}")
+    # 檢查結果
+    print(f"[DEBUG] All processed images: {pred_img}")
+
+    # 使用處理後的影像進行推論
+    for processed_img_pth in pred_img:
+        args.img_pth = processed_img_pth
+        print(f"[INFO] Updated args.img_pth to: {args.img_pth}")
+
 
     # inferer
     keys = ['pred']
@@ -103,6 +123,8 @@ def main_worker(args):
         overlap=args.infer_overlap,
     )
 
+
+
     # prepare data_dict
     if args.data_dicts_json and args.data_name != 'mmwhs':
         data_dicts = load_data_dict_json(args.data_dir, args.data_dicts_json)
@@ -118,6 +140,9 @@ def main_worker(args):
             data_dicts = [{
                 'image': args.img_pth,
             }]
+
+    # 列印 data_dicts 確認內容
+    print(f"[DEBUG] Data dicts: {data_dicts}")
 
     # # run infer
     # for data_dict in data_dicts:
