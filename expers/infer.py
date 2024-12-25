@@ -82,7 +82,7 @@ def main_worker(args):
     for root, dirs, files in os.walk("/content/drive/MyDrive/myo_pred/mwhs/image", topdown=False):
         for name in files:
             original_path = os.path.join(root, name)
-            print(f"[INFO] Found image: {original_path}")
+            # print(f"[INFO] Found image: {original_path}")
 
             # 設置處理後影像的輸出路徑
             processed_img_pth = f"/content/drive/MyDrive/myo_pred/mwhs/infer/processed_{name}"
@@ -92,14 +92,14 @@ def main_worker(args):
 
             # 更新處理後的影像到清單中
             pred_img.append(processed_img_pth)
-            print(f"[INFO] Processed image added to list: {processed_img_pth}")
+            # print(f"[INFO] Processed image added to list: {processed_img_pth}")
     # 檢查結果
-    print(f"[DEBUG] All processed images: {pred_img}")
+    # print(f"[DEBUG] All processed images: {pred_img}")
 
     # 使用處理後的影像進行推論
     for processed_img_pth in pred_img:
         args.img_pth = processed_img_pth
-        print(f"[INFO] Updated args.img_pth to: {args.img_pth}")
+        # print(f"[INFO] Updated args.img_pth to: {args.img_pth}")
 
 
     # inferer
@@ -143,7 +143,7 @@ def main_worker(args):
             }]
 
     # 列印 data_dicts 確認內容
-    print(f"[DEBUG] Data dicts: {data_dicts}")
+    # print(f"[DEBUG] Data dicts: {data_dicts}")
 
     # # run infer
     # for data_dict in data_dicts:
@@ -162,13 +162,13 @@ def main_worker(args):
     #     )
 
     # run infer with gradcam
-    target_layers = [model.decoder1.conv_block.cbam]
+    target_layers = [model.decoder1.conv_block.conv3]
     for data_dict in data_dicts:
-        print('infer data:', data_dict)
+        # print('infer data:', data_dict)
       
         # load infer data
         data = get_infer_data(data_dict, args)
-        print(f"[INFO] Loaded image shape: {data['image'].shape}")
+        # print(f"[INFO] Loaded image shape: {data['image'].shape}")
 
         # infer
         run_infering_with_gradcam(
