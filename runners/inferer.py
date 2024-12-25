@@ -274,7 +274,7 @@ def run_infering_with_gradcam(
     # 新的完整反向勾子
     def backward_hook(module, grad_input, grad_output):
         # 放大梯度
-        scaled_grad = grad_output[0] * 1e8  # 將梯度放大 1e8 倍
+        scaled_grad = grad_output[0] * 1e10  # 將梯度放大 1e8 倍
         gradients.append(scaled_grad)
 
     # 註冊前向和完整反向勾子
@@ -305,7 +305,7 @@ def run_infering_with_gradcam(
         # targets = [SemanticSegmentationTarget(category=1, mask=mask)]  # mask 可用於指定特定空間位置
 
         # 計算 Grad-CAM 權重
-        weights = gradients[0].mean(axis=(2, 3, 4))  # 沿空間維度計算均值
+        weights = (gradients[0] ** 2).mean(axis=(2, 3, 4))  # 放大權重  # 沿空間維度計算均值
         print(f"[DEBUG] Weights shape: {weights.shape}")
         # 擴展權重以匹配激活圖形狀
         weights = weights.view(1, 48, 1, 1, 1)  # 形狀為 (1, 48, 1, 1, 1)
@@ -316,11 +316,15 @@ def run_infering_with_gradcam(
             # grayscale_cam = cam(input_tensor=batch_input, targets=targets)
         # grayscale_cam = weighted_activations.sum(axis=1)  # 沿通道維度求和
         grayscale_cam = weighted_activations.sum(axis=1).detach().cpu().numpy()  # 沿通道維度求和
-        
+
         # 檢查輸出結果
         print(f"[INFO] Grayscale CAM shape: {grayscale_cam.shape}")
         print(f"[DEBUG] Grayscale CAM - min: {grayscale_cam.min()}, max: {grayscale_cam.max()}")
 
+        # 將 Grayscale CAM 儲存為 3D NIfTI
+        grayscale_cam = np.squeeze(grayscale_cam)  # 移除批次維度
+        print(f"[DEBUG] Grayscale CAM shape after squeeze: {grayscale_cam.shape}")
+        
         # 儲存 Grayscale CAM 為 3D NIfTI
         save_path_3d = os.path.join(args.infer_dir, f"grad_cam_3d_visualization_{i}.nii.gz")
         nii_img = nib.Nifti1Image(grayscale_cam, affine=np.eye(4))  # 單位仿射矩陣
