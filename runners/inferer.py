@@ -314,7 +314,9 @@ def run_infering_with_gradcam(
 
         # with autocast():  # 混合精度執行
             # grayscale_cam = cam(input_tensor=batch_input, targets=targets)
-        grayscale_cam = weighted_activations.sum(axis=1)  # 沿通道維度求和
+        # grayscale_cam = weighted_activations.sum(axis=1)  # 沿通道維度求和
+        grayscale_cam = weighted_activations.sum(axis=1).detach().cpu().numpy()  # 沿通道維度求和
+        
         # 檢查輸出結果
         print(f"[INFO] Grayscale CAM shape: {grayscale_cam.shape}")
         print(f"[DEBUG] Grayscale CAM - min: {grayscale_cam.min()}, max: {grayscale_cam.max()}")
