@@ -209,10 +209,12 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 import cv2
 import torch.nn.functional as F
+from torch.cuda.amp import autocast
+
 
 def align_tensor(tensor, target_shape):
     """
-    調整張量的空間大小以匹配目標形狀。
+    調整張量的空間大小以符合目標形狀。
     """
     print(f"Aligning tensor from {tensor.shape} to {target_shape}...")
 
@@ -228,115 +230,59 @@ def align_tensor(tensor, target_shape):
     return aligned_tensor
 
 
+from pytorch_grad_cam.utils.model_targets import SemanticSegmentationTarget
+
 def run_infering_with_gradcam(
-        model, data, model_inferer, post_transform, args, target_layers
+        model, data, model_inferer, post_transform, args, target_layers, batch_size=1
     ):
+    
+
     ret_dict = {}
 
-    # test 推論過程（推論時間計算）
-    start_time = time.time()
-    data['pred'] = infer(model, data, model_inferer, args.device)
-    end_time = time.time()
-    ret_dict['inf_time'] = end_time - start_time
-    print(f'infer time: {ret_dict["inf_time"]} sec')
+    torch.cuda.empty_cache()
+
+    # 確保模型的所有參數啟用梯度計算
+    for param in model.parameters():
+        param.requires_grad = True
+    for param in model.decoder1.conv_block.cbam.parameters():
+      if param.grad is None:
+          print(f"[DEBUG] Gradient for CBAM is None. Ensure backward pass is performed correctly.")
 
     # Grad-CAM visualization
     cam = GradCAM(model=model, target_layers=target_layers)
-    with torch.no_grad():
-        # 檢查影像形狀與資料型別
-        print(f"[INFO] Image shape: {data['image'].shape}, dtype: {data['image'].dtype}")
+    input_tensor = data['image'].to(args.device).requires_grad_(True)
+    # 確保影像形狀符合要求
+    target_shape = (input_tensor.shape[0], input_tensor.shape[1], 128, 128, 128)
+    if input_tensor.shape != target_shape:
+        print(f"Mismatch detected: {input_tensor.shape} vs {target_shape}")
+        input_tensor = align_tensor(input_tensor, target_shape)
 
-        input_tensor = data['image'].to(args.device)
-        # 檢查影像形狀與設備
-        print(f"Input tensor shape: {input_tensor.shape}, Device: {input_tensor.device}")
+    num_samples = input_tensor.shape[0]
+    print(f"[INFO] Total samples: {num_samples}, Batch size: {batch_size}")
 
-        # 確保影像形狀匹配
-        target_shape = (input_tensor.shape[0], input_tensor.shape[1], 128, 128, 128)
-        if input_tensor.shape != target_shape:
-            print(f"Mismatch detected: {input_tensor.shape} vs {target_shape}")
-            input_tensor = align_tensor(input_tensor, target_shape)
+    for i in range(0, num_samples, batch_size):
+        batch_input = input_tensor[i:i + batch_size]
+        
+        # 提供有效的 mask
+        mask_shape = batch_input.shape[2:]  # (D, H, W)
+        mask = np.ones(mask_shape, dtype=np.float32)  # 全 1 的 mask
+        # 設置目標類別為 1，選擇空間位置
+        targets = [SemanticSegmentationTarget(category=1, mask=mask)]  # mask 可用於指定特定空間位置
 
-        grayscale_cam = cam(input_tensor=input_tensor, targets=None)
+        with autocast():  # 混合精度執行
+            grayscale_cam = cam(input_tensor=batch_input, targets=targets)
 
-        # 處理批次資料
-        for idx in range(len(grayscale_cam)):
-            original_image = input_tensor[idx, 0].cpu().numpy()  # 假設輸入形狀 (B, C, D, H, W)
-            min_val, max_val = original_image.min(), original_image.max()
-            normalized_image = (original_image - min_val) / (max_val - min_val)
+        for j, cam_result in enumerate(grayscale_cam):
+            idx = i + j
+            original_image = batch_input[j, 0].cpu().numpy()
+            normalized_image = (original_image - original_image.min()) / (original_image.max() - original_image.min())
+            cam_image = show_cam_on_image(normalized_image, cam_result, use_rgb=True)
 
-            # 產生並儲存熱力圖
-            cam_image = show_cam_on_image(normalized_image, grayscale_cam[idx], use_rgb=True)
             save_path = os.path.join(args.infer_dir, f"grad_cam_visualization_{idx}.png")
             cv2.imwrite(save_path, cam_image)
-            print(f"Grad-CAM visualization results have been saved in {save_path}")
+            print(f"[INFO] Grad-CAM visualization saved at {save_path}")
 
-    # post process transform 後處理
-    if args.infer_post_process:
-        print('use post process infer')
-        applied_labels = np.unique(data['pred'].flatten())[1:]
-        data['pred'] = KeepLargestConnectedComponent(applied_labels=applied_labels)(data['pred'])
-    
-    # eval infer tta 模型評估（TTA與原標籤）
-    if 'label' in data.keys():
-        tta_dc_vals, tta_hd95_vals, _ , _ = eval_label_pred(data, args.out_channels, args.device)
-        print('infer test time aug:')
-        print('dice:', tta_dc_vals)
-        print('hd95:', tta_hd95_vals)
-        ret_dict['tta_dc'] = tta_dc_vals
-        ret_dict['tta_hd'] = tta_hd95_vals
-        
-        # post label transform 
-        sqz_transform = SqueezeDimd(keys=['label'])
-        data = sqz_transform(data)
-    
-    # post transform 資料轉換與評估（原始標籤）
-    data = post_transform(data)
-    # eval infer origin
-    if 'label' in data.keys():
-        # get orginal label
-        lbl_dict = {'label': data['label_meta_dict']['filename_or_obj']}
-        label_loader = get_label_transform(args.data_name, keys=['label'])
-        lbl_data = label_loader(lbl_dict)
-        
-        data['label'] = lbl_data['label']
-        data['label_meta_dict'] = lbl_data['label']
-        
-        ori_dc_vals, ori_hd95_vals, ori_sensitivity_vals, ori_specificity_vals = eval_label_pred(data, args.out_channels, args.device)
-        print('infer test original:')
-        print('dice:', ori_dc_vals)
-        print('hd95:', ori_hd95_vals)
-        print('sensitivity:', ori_sensitivity_vals)
-        print('specificity:', ori_specificity_vals)
-        ret_dict['ori_dc'] = ori_dc_vals
-        ret_dict['ori_hd'] = ori_hd95_vals
-        ret_dict['ori_sensitivity'] = ori_sensitivity_vals
-        ret_dict['ori_specificity'] = ori_specificity_vals
-    
-    # 特定資料集處裡（MM-WHS）
-    if args.data_name == 'mmwhs':
-        mmwhs_transform = Compose([
-            LabelFilter(applied_labels=[1, 2, 3, 4, 5, 6, 7]),
-            MapLabelValue(orig_labels=[0, 1, 2, 3, 4, 5, 6, 7],
-                            target_labels=[0, 500, 600, 420, 550, 205, 820, 850]),
-            # AddChannel(),
-            # Spacing(
-            #     pixdim=(args.space_x, args.space_y, args.space_z),
-            #     mode=("nearest"),
-            # ),
-            # SqueezeDim()
-        ])
-        data['pred'] = mmwhs_transform(data['pred'])
-        
-    # 儲存推論結果
-    if not args.test_mode:
-        # save pred result
-        filename = get_filename(data)
-        infer_img_pth = os.path.join(args.infer_dir, filename)
+        torch.cuda.empty_cache()
 
-        save_img(
-          data['pred'], 
-          data['pred_meta_dict'], 
-          infer_img_pth
-        )
 
     return ret_dict

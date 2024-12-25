@@ -3,6 +3,7 @@ import sys
 sys.path.append("/content/CardiacSegV2_gradcam")
 
 import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:256"
 from functools import partial
 
 import torch
