@@ -285,9 +285,17 @@ def run_infering_with_gradcam(
     for i in range(0, num_samples, batch_size):
         batch_input = input_tensor[i:i + batch_size]
 
+        
+        # 提供有效的 mask
+        target_class = 1  # 假設目標類別是心肌類別
+        mask = np.ones_like(input_tensor[0, 0].detach().cpu().numpy())  # 選擇全部區域的mask
+        targets = [SemanticSegmentationTarget(target_class, mask)]
+
+
         # 檢查激活與梯度
-        output = model(input_tensor)  # 執行正向傳播
-        scalar_output = output.mean()
+        output = model(batch_input)  # 執行正向傳播
+        # scalar_output = output.mean()
+        scalar_output = output[:, target_class].mean()  # 取出心肌的輸出分數
         scalar_output.backward()  # 執行反向傳播
 
         # 檢查目標層的激活與梯度
@@ -298,14 +306,10 @@ def run_infering_with_gradcam(
             print(f"[DEBUG] Gradient min: {gradients[0].min()}, max: {gradients[0].max()}")
 
         
-        # # 提供有效的 mask
-        # mask_shape = batch_input.shape[2:]  # (D, H, W)
-        # mask = np.ones(mask_shape, dtype=np.float32)  # 全 1 的 mask
-        # # 設置目標類別為 1，選擇空間位置
-        # targets = [SemanticSegmentationTarget(category=1, mask=mask)]  # mask 可用於指定特定空間位置
 
         # 計算 Grad-CAM 權重
         weights = (gradients[0] ** 2).mean(axis=(2, 3, 4))  # 放大權重  # 沿空間維度計算均值
+        # weights = gradients[0].abs().mean()
         print(f"[DEBUG] Weights shape: {weights.shape}")
         # 擴展權重以匹配激活圖形狀
         weights = weights.view(1, 48, 1, 1, 1)  # 形狀為 (1, 48, 1, 1, 1)
@@ -330,49 +334,6 @@ def run_infering_with_gradcam(
         nii_img = nib.Nifti1Image(grayscale_cam, affine=np.eye(4))  # 單位仿射矩陣
         nib.save(nii_img, save_path_3d)
         print(f"[INFO] 3D Grad-CAM visualization saved at {save_path_3d}")
-
-
-        # for j, cam_result in enumerate(grayscale_cam):
-        #     idx = i + j
-            
-
-        #     # 將 cam_result 從張量轉換為 NumPy 陣列
-        #     mask = cam_result.detach().cpu().numpy().astype(np.float32)
-        #     print(f"Before normalization - mask type: {mask.dtype}, shape: {mask.shape}, min: {mask.min()}, max: {mask.max()}")
-
-        #     # 檢查分母是否為 0 並進行正規化
-        #     if mask.max() - mask.min() == 0:
-        #         print("[WARNING] mask has no variation, skipping normalization.")
-        #         mask = np.zeros_like(mask, dtype=np.uint8)  # 設置為全 0
-        #     else:
-        #         # 正規化並轉換為 uint8
-        #         mask = (mask - mask.min()) / (mask.max() - mask.min())
-        #         mask = np.uint8(255 * mask)
-
-        #     # 檢查無效值
-        #     if np.isnan(mask).any() or np.isinf(mask).any():
-        #         print("[ERROR] Detected invalid values in mask, replacing with zeros.")
-        #         mask = np.zeros_like(mask, dtype=np.uint8)
-
-        #     # 確保 mask 是單通道
-        #     if len(mask.shape) > 2:
-        #         mask = mask[:, :, 0]
-            
-        #     print(f"After normalization - mask type: {mask.dtype}, shape: {mask.shape}, min: {mask.min()}, max: {mask.max()}")
-
-        #     # 使用 OpenCV 應用顏色映射
-        #     heatmap = cv2.applyColorMap(mask, cv2.COLORMAP_JET)
-
-        #     # 確保移除梯度計算關聯
-        #     original_image = batch_input[j, 0].detach().cpu().numpy()
-        #     normalized_image = (original_image - original_image.min()) / (original_image.max() - original_image.min())
-            
-        #     cam_image = show_cam_on_image(normalized_image, heatmap, use_rgb=True)
-            
-        #     # 儲存結果
-        #     save_path = os.path.join(args.infer_dir, f"grad_cam_visualization_{idx}.png")
-        #     cv2.imwrite(save_path, cam_image)
-        #     print(f"[INFO] Grad-CAM visualization saved at {save_path}")
 
         torch.cuda.empty_cache()
 
