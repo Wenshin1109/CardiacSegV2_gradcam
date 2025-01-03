@@ -56,7 +56,9 @@ def process_and_save(input_path, output_path):
     """
     try:
         print(f"Loading image: {input_path}")
-        img = nib.load(input_path).get_fdata()
+        nii_img = nib.load(input_path)
+        img = nii_img.get_fdata()
+        original_affine = nii_img.affine  # 保留原始仿射矩陣
 
         print(f"Original image shape: {img.shape}")
 
@@ -66,8 +68,8 @@ def process_and_save(input_path, output_path):
 
         print(f"Processed image shape: {resampled_img.shape}")
 
-        # save processed image
-        processed_img_nii = nib.Nifti1Image(resampled_img, affine=np.eye(4))
+        # save processed image, 使用原始仿射矩陣
+        processed_img_nii = nib.Nifti1Image(resampled_img, affine=original_affine)
         nib.save(processed_img_nii, output_path)
         print(f"Image saved to: {output_path}")
 

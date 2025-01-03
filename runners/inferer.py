@@ -246,8 +246,8 @@ def run_infering_with_gradcam(
     for param in model.parameters():
         param.requires_grad = True
     for param in model.decoder1.conv_block.conv3.parameters():
-      param.requires_grad = True
-      if param.grad is None:
+        param.requires_grad = True
+        if param.grad is None:
           print(f"[DEBUG] Gradient for conv3 is None. Ensure backward pass is performed correctly.")
 
     # Grad-CAM visualization
@@ -274,7 +274,8 @@ def run_infering_with_gradcam(
     # 新的完整反向勾子
     def backward_hook(module, grad_input, grad_output):
         # 放大梯度
-        scaled_grad = grad_output[0] * 1e10  # 將梯度放大 1e8 倍
+        # scaled_grad = grad_output[0] * 1e10  # 將梯度放大 1e8 倍
+        scaled_grad = grad_output[0]
         gradients.append(scaled_grad)
 
     # 註冊前向和完整反向勾子
@@ -307,19 +308,28 @@ def run_infering_with_gradcam(
 
         
 
-        # 計算 Grad-CAM 權重
-        weights = (gradients[0] ** 2).mean(axis=(2, 3, 4))  # 放大權重  # 沿空間維度計算均值
-        # weights = gradients[0].abs().mean()
-        print(f"[DEBUG] Weights shape: {weights.shape}")
-        # 擴展權重以匹配激活圖形狀
-        weights = weights.view(1, 48, 1, 1, 1)  # 形狀為 (1, 48, 1, 1, 1)
-        # 加權激活圖
-        weighted_activations = activations[0] * weights
+        # # 計算 Grad-CAM 權重
+        # weights = (gradients[0] ** 2).mean(axis=(2, 3, 4))  # 放大權重  # 沿空間維度計算均值
+        # # weights = gradients[0].abs().mean()
+        # print(f"[DEBUG] Weights shape: {weights.shape}")
+        # # 擴展權重以匹配激活圖形狀
+        # weights = weights.view(1, 48, 1, 1, 1)  # 形狀為 (1, 48, 1, 1, 1)
+        # # 加權激活圖
+        # weighted_activations = activations[0] * weights
+
+        # 計算權重
+        weights = gradients[0].abs().mean(dim=(2, 3, 4))  # 使用絕對值
+        weighted_activations = activations[0] * weights[:, :, None, None, None]
 
         # with autocast():  # 混合精度執行
             # grayscale_cam = cam(input_tensor=batch_input, targets=targets)
         # grayscale_cam = weighted_activations.sum(axis=1)  # 沿通道維度求和
-        grayscale_cam = weighted_activations.sum(axis=1).detach().cpu().numpy()  # 沿通道維度求和
+        # grayscale_cam = weighted_activations.sum(axis=1).detach().cpu().numpy()  # 沿通道維度求和
+
+        # 計算 Grad-CAM 熱力圖
+        grayscale_cam = weighted_activations.sum(dim=1).detach().cpu().numpy()
+        grayscale_cam = np.maximum(grayscale_cam, 0)  # ReLU
+        grayscale_cam = np.squeeze(grayscale_cam)
 
         # 檢查輸出結果
         print(f"[INFO] Grayscale CAM shape: {grayscale_cam.shape}")
