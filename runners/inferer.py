@@ -335,13 +335,16 @@ def run_infering_with_gradcam(
         print(f"[INFO] Grayscale CAM shape: {grayscale_cam.shape}")
         print(f"[DEBUG] Grayscale CAM - min: {grayscale_cam.min()}, max: {grayscale_cam.max()}")
 
-        # 將 Grayscale CAM 儲存為 3D NIfTI
+        
         grayscale_cam = np.squeeze(grayscale_cam)  # 移除批次維度
         print(f"[DEBUG] Grayscale CAM shape after squeeze: {grayscale_cam.shape}")
         
+        nii_img = data['image']
+        original_affine = nii_img.affine  # 保留原始仿射矩陣
+
         # 儲存 Grayscale CAM 為 3D NIfTI
         save_path_3d = os.path.join(args.infer_dir, f"grad_cam_3d_visualization_{i}.nii.gz")
-        nii_img = nib.Nifti1Image(grayscale_cam, affine=np.eye(4))  # 單位仿射矩陣
+        nii_img = nib.Nifti1Image(grayscale_cam, affine=original_affine)  # 單位仿射矩陣
         nib.save(nii_img, save_path_3d)
         print(f"[INFO] 3D Grad-CAM visualization saved at {save_path_3d}")
 
